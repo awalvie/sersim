@@ -6,6 +6,7 @@
    and the port number and serves requested files by searching for them in the
    given directory. */
 
+#include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -13,6 +14,8 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <netinet/in.h>
+
+#define CHARACTER_BUFFER 30000
 
 struct {
 	char *ext;
@@ -34,9 +37,15 @@ void usage(void)
 
 int main(int argc, char *argv[])
 {
-	/* used to process arguments */
-	int i, opt, port = 0;
+	/* Argument Parsing */
+	int i, opt, server_fd, peer_fd;
+	int port = 0;
 	char *location;
+	socklen_t length;
+	long buff_location;
+
+	static struct sockaddr_in server_addr;
+	static struct sockaddr_in peer_addr;
 
 	if (argc == 1) {
 		usage();
@@ -95,6 +104,49 @@ int main(int argc, char *argv[])
 			usage();
 			exit(EXIT_FAILURE);
 		}
+	}
+
+	if (chdir(location) == -1) {
+		fprintf(stderr,
+			"Cannot change to the directory.\n"
+			"Please ensure the directory exists and ins't unsupported.\n");
+		usage();
+	}
+
+	if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+		fprintf(stderr, "ERROR: Could not start socket\n");
+		exit(EXIT_FAILURE);
+	}
+
+	server_addr.sin_family = AF_INET;
+	server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	server_addr.sin_port = htons(port);
+
+	if ((bind(server_fd, (struct sockaddr *)&server_addr,
+		  sizeof(server_addr))) < 0) {
+		fprintf(stderr, "ERROR: Could not bind port\n");
+		exit(EXIT_FAILURE);
+	}
+
+	if ((listen(server_fd, 64)) < 0) {
+		fprintf(stderr, "ERROR: Could not listen on given port.\n");
+		exit(EXIT_FAILURE);
+	}
+
+	while (1) {
+		fprintf(stdout, "\nWaiting for connection\n");
+		length = sizeof(peer_addr);
+		if ((peer_fd = accept(server_fd, (struct sockaddr *)&peer_addr,
+				      &length)) < 0) {
+			fprintf(stderr,
+				"ERROR: Could not accept connection.\n");
+			exit(EXIT_FAILURE);
+		}
+
+		char buffer[CHARACTER_BUFFER] = {0};
+		buff_location = read(peer_fd , buffer, sizeof(buffer)/sizeof(char));
+		printf("%s\n", buffer);
+		close(peer_fd);
 	}
 
 	exit(EXIT_SUCCESS);
