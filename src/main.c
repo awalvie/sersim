@@ -143,8 +143,9 @@ int main(int argc, char *argv[])
 			exit(EXIT_FAILURE);
 		}
 
-		char buffer[CHARACTER_BUFFER] = {0};
-		buff_location = read(peer_fd , buffer, sizeof(buffer)/sizeof(char));
+		char buffer[CHARACTER_BUFFER] = { 0 };
+		buff_location =
+			read(peer_fd, buffer, sizeof(buffer) / sizeof(char));
 		printf("%s\n", buffer);
 		close(peer_fd);
 	}
