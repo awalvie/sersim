@@ -6,16 +6,19 @@
    and the port number and serves requested files by searching for them in the
    given directory. */
 
+#include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <getopt.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <netinet/in.h>
 
-#define CHARACTER_BUFFER 30000
+#define VERSION 1
+#define CHARACTER_BUFFER 8096
 
 struct {
 	char *ext;
@@ -26,6 +29,7 @@ struct {
 	{ "ico", "image/ico" },	  { "zip", "image/zip" },
 	{ "gz", "image/gz" },	  { "tar", "image/tar" },
 	{ "htm", "text/html" },	  { "html", "text/html" },
+	{ "ico", "image/ico"},
 };
 
 void usage(void)
@@ -35,6 +39,93 @@ void usage(void)
 	exit(EXIT_FAILURE);
 }
 
+void web(int peer_fd)
+{
+	int i, j, fd;
+	long file_len, ret, buflen, extlen;
+	char *ftype;
+
+	char buffer[CHARACTER_BUFFER] = { 0 };
+	ret = read(peer_fd, buffer, sizeof(buffer) / sizeof(char));
+
+	/* check various return values  */
+	if (ret == 0 || ret == -1) {
+		fprintf(stderr, "ERROR: Failed to read browser request.\n");
+		exit(EXIT_FAILURE);
+	}
+
+	if (ret > 0 || ret < CHARACTER_BUFFER) {
+		buffer[ret] = 0;
+	} else {
+		buffer[0] = 0;
+	}
+
+	/* remove carriage returns and newline characters */
+	for (i = 0; i < ret; i++) {
+		if (buffer[i] == '\r' || buffer[i] == '\n') {
+			buffer[i] = '*';
+		}
+	}
+
+	/* grab the request type and the requested page */
+	/* assigning int 0 to a character buffer lets us put and escape  */
+	/* char there  */
+	for (i = 4; i < ret; i++) {
+		if (buffer[i] == ' ') {
+			buffer[i] = 0;
+			break;
+		}
+	}
+
+	/* check if parent file is being requested in the path */
+	for (j = 0; j < i - 1; j++) {
+		if (buffer[j] == '.' && buffer[j + 1] == '.') {
+			fprintf(stderr,
+				"ERROR: Requesting parent directory in the path is not allowed\n");
+		}
+	}
+
+	/* request index.html by default */
+	if (!strncmp(&buffer[0], "GET /\0", 6)) {
+		strcpy(buffer, "GET /index.html");
+	}
+
+	buflen = strlen(buffer);
+	for (i = 0; extensions[i].ext != 0; i++) {
+		extlen = strlen(extensions[i].ext);
+		if (!strncmp(&buffer[buflen - extlen], extensions[i].ext,
+			     extlen)) {
+			ftype = extensions[i].filetype;
+			break;
+		}
+	}
+
+	if (!ftype) {
+		fprintf(stderr, "ERROR: The filetype is not allowed.\n");
+	}
+
+	if ((fd = open(&buffer[5], O_RDONLY)) == -1) {
+		fprintf(stderr, "ERROR: %s: File does not exist.\n",
+			&buffer[5]);
+	}
+
+	/* find total length of the file */
+	file_len = lseek(fd, 0, SEEK_END);
+	/* set the cursor back to the start of the file */
+	lseek(fd, 0, SEEK_SET);
+	/* print header */
+	sprintf(buffer,
+		"HTTP/1.1 200 OK\nServer: simper/%d.0\nContent-Length: %ld\nConnection: close\nContent-Type: %s\n\n",
+		VERSION, file_len, ftype);
+	write(peer_fd, buffer, strlen(buffer));
+
+	while ((ret = read(fd, buffer, CHARACTER_BUFFER)) > 0) {
+		write(peer_fd, buffer, ret);
+	}
+	sleep(1);
+	close(peer_fd);
+}
+
 int main(int argc, char *argv[])
 {
 	/* Argument Parsing */
@@ -42,7 +133,6 @@ int main(int argc, char *argv[])
 	int port = 0;
 	char *location;
 	socklen_t length;
-	long buff_location;
 
 	static struct sockaddr_in server_addr;
 	static struct sockaddr_in peer_addr;
@@ -78,17 +168,17 @@ int main(int argc, char *argv[])
 	}
 
 	if (port == 0) {
-		fprintf(stderr, "Port not specified.\n");
+		fprintf(stderr, "ERROR: Port not specified.\n");
 		usage();
 	} else if (port < 1 || port > 60000) {
 		fprintf(stderr,
-			"Port %d is out of the accepted range of 1-60000.\n",
+			"ERROR: Port %d is out of the accepted range of 1-60000.\n",
 			port);
 		usage();
 	}
 
 	if (location == NULL) {
-		fprintf(stderr, "Location not specified.\n");
+		fprintf(stderr, "ERROR: Location not specified.\n");
 		usage();
 	} else {
 		if (!strncmp(location, "/", 2) ||
@@ -108,7 +198,7 @@ int main(int argc, char *argv[])
 
 	if (chdir(location) == -1) {
 		fprintf(stderr,
-			"Cannot change to the directory.\n"
+			"ERROR: Cannot change to the directory.\n"
 			"Please ensure the directory exists and ins't unsupported.\n");
 		usage();
 	}
@@ -143,11 +233,7 @@ int main(int argc, char *argv[])
 			exit(EXIT_FAILURE);
 		}
 
-		char buffer[CHARACTER_BUFFER] = { 0 };
-		buff_location =
-			read(peer_fd, buffer, sizeof(buffer) / sizeof(char));
-		printf("%s\n", buffer);
-		close(peer_fd);
+		web(peer_fd);
 	}
 
 	exit(EXIT_SUCCESS);
