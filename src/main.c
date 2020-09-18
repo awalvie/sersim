@@ -115,7 +115,7 @@ void web(int peer_fd)
 	lseek(fd, 0, SEEK_SET);
 	/* print header */
 	sprintf(buffer,
-		"HTTP/1.1 200 OK\nServer: simper/%d.0\nContent-Length: %ld\nConnection: close\nContent-Type: %s\n\n",
+		"HTTP/1.1 200 OK\nServer: sersim/%d.0\nContent-Length: %ld\nConnection: close\nContent-Type: %s\n\n",
 		VERSION, file_len, ftype);
 	write(peer_fd, buffer, strlen(buffer));
 
@@ -145,8 +145,8 @@ int main(int argc, char *argv[])
 		switch (opt) {
 		case 'h':
 			fprintf(stdout,
-				"Usage: simper -l LOCATION -p PORT\n"
-				"Simper is a simple server writtern in ANSI C.\n\n"
+				"Usage: sersim -l LOCATION -p PORT\n"
+				"sersim is a simple server writtern in ANSI C.\n\n"
 				"  -l\tNeeds to be the absolute location of the directory.\n"
 				"  -p\tBetween 1-60000\n"
 				"\nUnsupported direcries: /, /tmp, /bin, /lib, /usr, /sbin, /dev, /etc\n"
@@ -224,7 +224,6 @@ int main(int argc, char *argv[])
 	}
 
 	while (1) {
-		fprintf(stdout, "\nWaiting for connection\n");
 		length = sizeof(peer_addr);
 		if ((peer_fd = accept(server_fd, (struct sockaddr *)&peer_addr,
 				      &length)) < 0) {
